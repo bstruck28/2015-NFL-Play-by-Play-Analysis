@@ -1,0 +1,518 @@
+---
+title: "Final Project"
+author: "Ryan Koch, Jeff McKee, Bradley Struck"
+date: "12/3/2020"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(stringr)
+library(DescTools)
+
+nfl <- read.csv("C:/Users/Bradley/Downloads/NFLPlayByPlay2015.csv/NFLPlayByPlay2015.csv")
+```
+
+OFFENSIVE STATS
+
+```{r, warning = FALSE}
+
+nfl_plays <- nfl %>% filter(!(PlayType %in% c("End of Game", "Extra Point", "Half End", "No Play", "Quarter End", "Timeout", "Two Minute Warning")))
+ggplot(data = nfl_plays, mapping = aes(x = reorder(PlayType, Yards.Gained, median), y = Yards.Gained)) + 
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Yards Gained Per Play by Play Type") +
+  labs(x = "Play Type", y = "Yards Gained")
+
+```
+
+```{r, warning = FALSE}
+
+nfl_team_total <- nfl %>%
+  filter(PlayType == "Pass" | PlayType == "Run") %>%
+  group_by(posteam) %>%
+  summarise(GamesPlayed = n_distinct(GameID),
+            TotalPlays = n(),
+            TotalTouchdowns = sum(Touchdown),
+            TotalTouchdownRate = round(TotalTouchdowns/TotalPlays,3)
+            )
+
+nfl_team_pass <- nfl %>%
+  filter(PlayType == "Pass") %>%
+  group_by(posteam) %>%
+  summarise(#Passes
+            TotalPasses = n(),
+            #Completions
+            Completions = length(PassOutcome[PassOutcome=="Complete"]),
+            CompletionRate = round(Completions/TotalPasses,3),
+            #Incompletions
+            Incompletions = length(PassOutcome[PassOutcome=="Incomplete Pass"]),
+            IncompletionRate = round(Incompletions/TotalPasses,3),
+            #Interceptions
+            Interceptions = sum(InterceptionThrown),
+            InterceptionRate = round(Interceptions/TotalPasses,3),
+            #Passing Touchdowns
+            PassingTouchdowns = sum(Touchdown),
+            PassingTouchdownRate = round(PassingTouchdowns/TotalPasses,3),
+            #Passing Yards
+            TotalPassingYards = sum(Yards.Gained),
+            AveragePassingYardsPerAttempt = round(TotalPassingYards/TotalPasses,3)) %>%
+  arrange(posteam)
+
+nfl_team_run <- nfl %>%
+  filter(PlayType == "Run") %>%
+  group_by(posteam) %>%
+  summarise(#Runs
+            TotalRuns = n(),
+            #Fumbles
+            Fumbles = sum(Fumble),
+            FumbleRate = round(Fumbles/TotalRuns,3),
+            #Rushing Touchdowns
+            RushingTouchdowns = sum(Touchdown),
+            RushingTouchdownRate = round(RushingTouchdowns/TotalRuns,3),
+            #Rushing Yards
+            TotalRushingYards = sum(Yards.Gained),
+            AverageRushingYardsPerAttempt = round(TotalRushingYards/TotalRuns,3)) %>%
+  arrange(posteam)
+  
+nfl_team_pass_and_run <- merge(nfl_team_pass, nfl_team_run, by = c("posteam"))
+nfl_team_summary <- merge(nfl_team_total, nfl_team_pass_and_run, by = c("posteam"))
+nfl_team_summary <- rename(nfl_team_summary, Offense = posteam)
+
+nfl_game_total <- nfl %>%
+  filter(PlayType == "Pass" | PlayType == "Run") %>%
+  group_by(posteam, GameID) %>%
+  summarise(TotalPlays = n(),
+            TotalTouchdowns = sum(Touchdown),
+            TotalTouchdownRate = round(TotalTouchdowns/TotalPlays,3)
+  )
+
+nfl_game_pass <- nfl %>%
+  filter(PlayType == "Pass") %>%
+  group_by(posteam, GameID) %>%
+  summarise(#Passes
+    TotalPasses = n(),
+    #Completions
+    Completions = length(PassOutcome[PassOutcome=="Complete"]),
+    CompletionRate = round(Completions/TotalPasses,3),
+    #Incompletions
+    Incompletions = length(PassOutcome[PassOutcome=="Incomplete Pass"]),
+    IncompletionRate = round(Incompletions/TotalPasses,3),
+    #Interceptions
+    Interceptions = sum(InterceptionThrown),
+    InterceptionRate = round(Interceptions/TotalPasses,3),
+    #Passing Touchdowns
+    PassingTouchdowns = sum(Touchdown),
+    PassingTouchdownRate = round(PassingTouchdowns/TotalPasses,3),
+    #Passing Yards
+    TotalPassingYards = sum(Yards.Gained),
+    AveragePassingYardsPerAttempt = round(TotalPassingYards/TotalPasses,3)) %>%
+  arrange(posteam)
+
+nfl_game_run <- nfl %>%
+  filter(PlayType == "Run") %>%
+  group_by(posteam, GameID) %>%
+  summarise(#Runs
+    TotalRuns = n(),
+    #Fumbles
+    Fumbles = sum(Fumble),
+    FumbleRate = round(Fumbles/TotalRuns,3),
+    #Rushing Touchdowns
+    RushingTouchdowns = sum(Touchdown),
+    RushingTouchdownRate = round(RushingTouchdowns/TotalRuns,3),
+    #Rushing Yards
+    TotalRushingYards = sum(Yards.Gained),
+    AverageRushingYardsPerAttempt = round(TotalRushingYards/TotalRuns,3)) %>%
+  arrange(posteam)
+
+nfl_game_pass_and_run <- merge(nfl_game_pass, nfl_game_run, by = c("posteam", "GameID"))
+nfl_game_summary <- merge(nfl_game_total, nfl_game_pass_and_run, by = c("posteam", "GameID"))
+nfl_game_summary <- rename(nfl_game_summary, Offense = posteam)
+
+```
+
+```{r, warning = FALSE}
+
+f1 <- ggplot(data = nfl_team_summary, aes(x = AveragePassingYardsPerAttempt, y = AverageRushingYardsPerAttempt, color = Offense, size = TotalTouchdownRate)) + 
+  geom_point() +
+  ggtitle("Touchdown Rate per Team by Passing Yards Per Attempt and Rushing Yards Per Attempt") +
+  labs(x = "Average Passing Yards Per Attempt", y = "Average Rushing Yards Per Attempt")
+ggplotly(f1)
+
+```
+```{r, warning = FALSE}
+
+lm(TotalTouchdownRate ~ AveragePassingYardsPerAttempt, data = nfl_team_summary)
+
+f2 <- ggplot(data = nfl_team_summary, aes(x = AveragePassingYardsPerAttempt, y = TotalTouchdownRate, color = Offense))+
+  geom_point(shape=18) +
+  geom_abline(slope=0.007082,intercept=-0.010906) +
+  ggtitle("Touch Down Rate vs Average Passing Yards per Attempt by Offense") +
+  labs(x = "Average Passing Yards per Attempt", y = "Touch Down Rate")
+ggplotly(f2)
+
+lm(TotalTouchdownRate ~ AverageRushingYardsPerAttempt, data = nfl_team_summary)
+
+f3 <- ggplot(data = nfl_team_summary, aes(x = AverageRushingYardsPerAttempt, y = TotalTouchdownRate, color = Offense))+
+  geom_point(shape=18) +
+  geom_abline(slope=0.004639,intercept=0.022160) +
+  ggtitle("Touch Down Rate vs Average Rushing Yards per Attempt by Offense") +
+  labs(x = "Average Rushing Yards per Attempt", y = "Touch Down Rate")
+ggplotly(f3)
+
+```
+
+```{r, warning = FALSE}
+
+nfl_team_summary$AveragePassingYardBins <- cut(
+  nfl_team_summary$AveragePassingYardsPerAttempt,
+  breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, Inf),
+  labels = c("0-1", "1-2", "2-3", "3-4", "4-5", "5-6", "6-7", "7-8", "8-9"),
+  right = FALSE
+)
+
+nfl_team_summary$AverageRushingYardBins <- cut(
+  nfl_team_summary$AverageRushingYardsPerAttempt,
+  breaks = c(0, 1, 2, 3, 4, Inf),
+  labels = c("0-1", "1-2", "2-3", "3-4", "4-5"),
+  right = FALSE
+)
+
+nfl_team_summary_pass_aov <- aov(TotalTouchdownRate ~ AveragePassingYardBins, data = nfl_team_summary)
+summary(nfl_team_summary_pass_aov)
+
+nfl_team_summary_run_aov <- aov(TotalTouchdownRate ~ AverageRushingYardBins, data = nfl_team_summary)
+summary(nfl_team_summary_run_aov)
+
+lm(TotalTouchdownRate ~ AveragePassingYardsPerAttempt + AverageRushingYardsPerAttempt, data = nfl_team_summary)
+
+
+```
+
+```{r, warning = FALSE}
+
+lm(TotalTouchdownRate ~ AveragePassingYardsPerAttempt, data = nfl_game_summary)
+
+f2 <- ggplot(data = nfl_game_summary, aes(x = AveragePassingYardsPerAttempt, y = TotalTouchdownRate, color = Offense))+
+  geom_point(shape=18) +
+  geom_abline(slope=0.007082,intercept=-0.010906) +
+  ggtitle("Touch Down Rate vs Average Passing Yards per Attempt by Game") +
+  labs(x = "Average Passing Yards per Attempt", y = "Touch Down Rate")
+ggplotly(f2)
+
+lm(TotalTouchdownRate ~ AverageRushingYardsPerAttempt, data = nfl_game_summary)
+
+f3 <- ggplot(data = nfl_game_summary, aes(x = AverageRushingYardsPerAttempt, y = TotalTouchdownRate, color = Offense))+
+  geom_point(shape=18) +
+  geom_abline(slope=0.004639,intercept=0.022160) +
+  ggtitle("Touch Down Rate vs Average Rushing Yards per Attempt by Game") +
+  labs(x = "Average Rushing Yards per Attempt", y = "Touch Down Rate")
+ggplotly(f3)
+
+```
+
+```{r, warning = FALSE}
+
+nfl_game_summary$AveragePassingYardBins <- cut(
+  nfl_game_summary$AveragePassingYardsPerAttempt,
+  breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, Inf),
+  labels = c("0-1", "1-2", "2-3", "3-4", "4-5", "5-6", "6-7", "7-8", "8-9"),
+  right = FALSE
+)
+
+nfl_game_summary$AverageRushingYardBins <- cut(
+  nfl_game_summary$AverageRushingYardsPerAttempt,
+  breaks = c(0, 1, 2, 3, 4, Inf),
+  labels = c("0-1", "1-2", "2-3", "3-4", "4-5"),
+  right = FALSE
+)
+
+nfl_game_summary_pass_aov <- aov(TotalTouchdownRate ~ AveragePassingYardBins, data = nfl_game_summary)
+summary(nfl_game_summary_pass_aov)
+
+nfl_game_summary_run_aov <- aov(TotalTouchdownRate ~ AverageRushingYardBins, data = nfl_game_summary)
+summary(nfl_game_summary_run_aov)
+
+lm(TotalTouchdownRate ~ AveragePassingYardsPerAttempt + AverageRushingYardsPerAttempt, data = nfl_game_summary)
+
+
+```
+DEFENSIVE STATS
+
+```{r}
+pt <- table(nfl$PlayType)
+pt[order(pt, decreasing = T)]
+```
+
+
+```{r}
+sacks <- subset(nfl, nfl$PlayType %in% "Sack")
+ggplot(sacks, aes( x = DefensiveTeam, y = Yards.Gained))  + geom_boxplot(fill = "grey80")
+#On average about how many yards are taken away by a sack
+
+down3sack <- subset(sacks, sacks$down %in% 3)
+Desc(down3sack$Tackler1, main = "Top 3rd Down Sackers", plotit = TRUE)
+#These are the top sack people in the nfl for 2015
+```
+
+
+```{r}
+yards <- nfl %>% group_by(DefensiveTeam) %>% summarise(Yards = sum(Yards.Gained))
+yards <- na.omit(yards) #there were 0 yards anyway
+yards <- yards[order(yards$Yards),] #increasing, less means better
+h <- head(yards, 10)
+h$DefensiveTeam <- as.factor(h$DefensiveTeam)
+ggplot(h, aes(x = DefensiveTeam, y = Yards)) + 
+    geom_bar(stat = "identity", fill = "grey80") + 
+    ggtitle("Top 10 defensive teams") +
+    scale_x_discrete(limits=h$DefensiveTeam)
+```
+
+SPECIAL TEAMS
+
+```{r}
+punt.data <- as.data.frame(nfl[grep("Punt", nfl$PlayType), ])
+kickoff.data <- as.data.frame(nfl[grep("Kickoff", nfl$PlayType), ])
+field_goal.data <- as.data.frame(nfl[grep("Field Goal", nfl$PlayType), ])
+
+punt.data$punt_yards <- as.numeric(str_extract(punt.data$desc, "(?i)(?<=punts\\D)\\d+"))
+punt.data$Touchback <- as.integer(punt.data$ReturnResult == "Touchback")
+
+punt_net_yardage <- punt.data %>% 
+  filter(!is.na(posteam)& posteam!='' & !is.na(punt_yards)) %>%
+  group_by(posteam) %>%
+  summarise(punt.net_yardage = sum(punt_yards[Penalty.Yards==0] - Yards.Gained - (20*!is.na(Touchback))) / sum(PlayAttempted)) %>%
+  arrange(punt.net_yardage)
+data.frame(punt_net_yardage)
+
+punt_touchbacks <- punt.data %>%
+  filter(!is.na(posteam)& posteam!='' & !is.na(Touchback)) %>%
+  group_by(posteam) %>%
+  summarise(punt.touchbacks = sum(Touchback[Penalty.Yards==0])) %>%
+  arrange(punt.touchbacks)
+data.frame(punt_touchbacks)
+
+punt_blocks <- punt.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='') %>%
+  group_by(DefensiveTeam) %>%
+  summarise(punt.blocks = sum(PlayAttempted[PuntResult=="Blocked"])) %>%
+  arrange(punt.blocks)
+data.frame(punt_blocks)
+
+punt_blocks_against <- punt.data %>%
+  filter(!is.na(posteam)& posteam!='') %>%
+  group_by(posteam) %>%
+  summarise(punt.blocks_against = sum(PlayAttempted[PuntResult=="Blocked"])) %>%
+  arrange(punt.blocks_against)
+data.frame(punt_blocks_against)
+
+punt_return_yardage <- punt.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='') %>%
+  group_by(DefensiveTeam) %>%
+  summarise(punt.return_yardage = sum(Yards.Gained[Penalty.Yards==0]) / sum(PlayAttempted)) %>%
+  arrange(punt.return_yardage)
+data.frame(punt_return_yardage)
+
+punt_return_yardage_against <- punt.data %>%
+  filter(!is.na(posteam)& posteam!='') %>%
+  group_by(posteam) %>%
+  summarise(punt.return_yardage_against = sum(Yards.Gained[Penalty.Yards==0]) / sum(PlayAttempted)) %>%
+  arrange(punt.return_yardage_against)
+data.frame(punt_return_yardage_against)
+
+punt_return_touchdowns <- punt.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='') %>%
+  group_by(DefensiveTeam) %>%
+  summarise(punt.return_touchdowns = sum(Touchdown[Penalty.Yards==0])) %>%
+  arrange(punt.return_touchdowns)
+data.frame(punt_return_touchdowns)
+
+punt_return_touchdowns_against <- punt.data %>%
+  filter(!is.na(posteam)& posteam!='') %>%
+  group_by(posteam) %>%
+  summarise(punt.return_touchdowns_against = sum(Touchdown[Penalty.Yards==0])) %>%
+  arrange(punt.return_touchdowns_against)
+data.frame(punt_return_touchdowns_against)
+
+punting_team_list <- list(punt_net_yardage, punt_touchbacks, punt_blocks_against, punt_return_yardage_against, punt_return_touchdowns_against)
+
+receiving_team_list <- list(punt_return_yardage, punt_blocks, punt_return_touchdowns)
+
+library(reshape)
+punting_team <- merge_recurse(punting_team_list)
+
+receiving_team <- merge_recurse(receiving_team_list)
+
+final_punting_data <- punting_team %>%
+  inner_join(receiving_team,by=c('posteam'='DefensiveTeam'))
+
+
+
+
+punt1 <- ggplot(data=final_punting_data,aes(x=punt.net_yardage,y=punt.return_yardage)) + geom_point(aes(color=posteam, size=punt.return_yardage_against)) +
+   labs(title="2015-2016 NFL Punting Overview",x="Punt Net Yardage", y="Punt Return Yardage") + geom_text(aes(label=posteam),size=3.0)
+
+punt1
+
+punt_returners <- punt.data %>% 
+  group_by(DefensiveTeam, Returner) %>% 
+  summarise (Games.Played = n_distinct(Date),
+             Total.Yards = sum(Yards.Gained),
+             YPR = mean(Yards.Gained))
+punt_returners <- subset(punt_returners, !is.na(Returner))
+
+punt2 <- ggplot(punt_returners, aes(YPR, Total.Yards, color=as.factor(DefensiveTeam))) + 
+  geom_point() +
+  theme_bw()+ 
+  geom_text(aes(label=paste(Returner,"\n",DefensiveTeam, sep = "")),size=2)
+
+punt2
+
+
+
+```
+
+```{r}
+kickoff.data$kickoff_yards <- as.numeric(str_extract(kickoff.data$desc, "(?i)(?<=kicks\\D)\\d+"))
+kickoff.data$Touchback <- as.integer(kickoff.data$ReturnResult == "Touchback")
+
+kickoff_net_yardage <- kickoff.data %>% 
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='' & !is.na(kickoff_yards)) %>%
+  group_by(DefensiveTeam) %>%
+  summarise(kickoff.net_yardage = sum(kickoff_yards[Penalty.Yards==0] - Yards.Gained - (20*!is.na(Touchback))) / sum(PlayAttempted)) %>%
+  arrange(kickoff.net_yardage)
+data.frame(kickoff_net_yardage)
+
+kickoff_touchbacks <- kickoff.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='' & !is.na(Touchback)) %>%
+  group_by(DefensiveTeam) %>%
+  summarise(kickoff.touchbacks = sum(Touchback[Penalty.Yards==0])) %>%
+  arrange(kickoff.touchbacks)
+data.frame(kickoff_touchbacks)
+
+kickoff_return_yardage <- kickoff.data %>%
+  filter(!is.na(posteam)& posteam!='') %>%
+  group_by(posteam) %>%
+  summarise(kickoff.return_yardage = sum(Yards.Gained[Penalty.Yards==0]) / sum(PlayAttempted)) %>%
+  arrange(kickoff.return_yardage)
+data.frame(kickoff_return_yardage)
+
+kickoff_return_yardage_against <- kickoff.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='') %>%
+  group_by(DefensiveTeam) %>%
+  summarise(kickoff.return_yardage_against = sum(Yards.Gained[Penalty.Yards==0]) / sum(PlayAttempted)) %>%
+  arrange(kickoff.return_yardage_against)
+data.frame(kickoff_return_yardage_against)
+
+kickoff_return_touchdowns <- kickoff.data %>%
+  filter(!is.na(posteam)& posteam!='') %>%
+  group_by(posteam) %>%
+  summarise(kickoff.return_touchdowns = sum(Touchdown[Penalty.Yards==0])) %>%
+  arrange(kickoff.return_touchdowns)
+data.frame(kickoff_return_touchdowns)
+
+kickoff_return_touchdowns_against <- kickoff.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='') %>%
+  group_by(DefensiveTeam) %>%
+  summarise(kickoff.return_touchdowns_against = sum(Touchdown[Penalty.Yards==0])) %>%
+  arrange(kickoff.return_touchdowns_against)
+data.frame(kickoff_return_touchdowns_against)
+
+kickoff_team_list <- list(kickoff_net_yardage, kickoff_touchbacks, kickoff_return_yardage_against, kickoff_return_touchdowns_against)
+
+receiving_team_list_ko <- list(kickoff_return_yardage, kickoff_return_touchdowns)
+
+library(reshape)
+kickoff_team <- merge_recurse(kickoff_team_list)
+
+receiving_team_ko <- merge_recurse(receiving_team_list_ko)
+
+final_kickoff_data <- kickoff_team %>%
+  inner_join(receiving_team_ko,by=c('DefensiveTeam'='posteam'))
+
+kickoff1 <- ggplot(kickoff.data, aes(x=DefensiveTeam, y=kickoff_yards, color=DefensiveTeam)) +
+  geom_boxplot() + theme_minimal() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+kickoff1 + ylim(0,80)
+
+library(plotly)
+
+kickoff2 <- ggplot(kickoff.data, aes(Yards.Gained)) + geom_density(aes(fill=posteam), alpha=0.8)
+
+ggplotly(kickoff2)
+
+```
+
+```{r}
+field_goal_avg_distance <- field_goal.data %>% 
+  filter(!is.na(posteam)& posteam!='' & !is.na(FieldGoalDistance)) %>%
+  group_by(posteam) %>%
+  summarise(field_goal.distance = sum(FieldGoalDistance[Penalty.Yards==0]) / sum(PlayAttempted)) %>%
+  arrange(field_goal.distance)
+data.frame(field_goal_avg_distance)
+
+field_goal_blocks <- field_goal.data %>%
+  filter(!is.na(DefensiveTeam)& DefensiveTeam!='' & !is.na(FieldGoalResult)) %>%
+  group_by(DefensiveTeam) %>%
+  summarise(field_goal.blocks = sum(PlayAttempted[FieldGoalResult=="Blocked"])) %>%
+  arrange(field_goal.blocks)
+data.frame(field_goal_blocks)
+
+field_goal_blocks_against <- field_goal.data %>%
+  filter(!is.na(posteam)& posteam!='' & !is.na(FieldGoalResult)) %>%
+  group_by(posteam) %>%
+  summarise(field_goal.blocks_against = sum(PlayAttempted[FieldGoalResult=="Blocked"])) %>%
+  arrange(field_goal.blocks_against)
+data.frame(field_goal_blocks_against)
+
+field_goal_accuracy <- field_goal.data %>%
+  filter(!is.na(posteam)& posteam!='' & !is.na(FieldGoalResult)) %>%
+  group_by(posteam) %>%
+  summarise(field_goal.accuracy = sum(PlayAttempted[FieldGoalResult=="Good"]) / sum(PlayAttempted)) %>%
+  arrange(field_goal.accuracy)
+data.frame(field_goal_accuracy)
+
+field_goal_team_list <- list(field_goal_avg_distance, field_goal_blocks_against, field_goal_accuracy)
+
+library(reshape)
+field_goal_team <- merge_recurse(field_goal_team_list)
+
+final_field_goal_data <- field_goal_team %>%
+  inner_join(field_goal_blocks,by=c('posteam'='DefensiveTeam'))
+
+field_goal1 <- ggplot(data=final_field_goal_data, aes(x=posteam, y=field_goal.accuracy, fill=field_goal.distance)) +
+  geom_bar(stat="identity") + theme_minimal() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+field_goal1
+
+
+```
+
+```{r}
+special_teams <- final_punting_data %>%
+  inner_join(final_kickoff_data,by=c('posteam'='DefensiveTeam')) %>%
+  inner_join(final_field_goal_data,by=c('posteam'='posteam'))
+
+
+final <- ggplot(data=special_teams,aes(x=punt.net_yardage,y=kickoff.net_yardage)) + geom_point(aes(color=posteam, size=field_goal.accuracy)) +
+   labs(title="2015-2016 NFL Special Teams Overview",x="Punt Net Yardage", y="Kickoff Net Yardage") + geom_text(aes(label=posteam),size=3.0)
+
+final
+
+special_teams.aov <- aov(punt.net_yardage ~ kickoff.net_yardage, data = special_teams)
+
+summary(special_teams.aov)
+
+library(corrplot)
+
+st_cor <- cor(special_teams[,2:19])
+
+st_cor
+
+
+```
